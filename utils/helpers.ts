@@ -1,46 +1,60 @@
-import type { Tables } from '@/types_db';
+// import type { Tables } from '@/types_db';
+import { Timestamp } from 'firebase/firestore';
+import { auth, db } from './firebase';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, UserCredential } from 'firebase/auth';
+import { createUserDocument, getUserDocument } from './firestore';
 
-type Price = Tables<'prices'>;
+// type Price = Tables<'prices'>;
 
-export const getURL = (path: string = '') => {
-  // Check if NEXT_PUBLIC_SITE_URL is set and non-empty. Set this to your site URL in production env.
-  let url =
-    process?.env?.NEXT_PUBLIC_SITE_URL &&
-    process.env.NEXT_PUBLIC_SITE_URL.trim() !== ''
-      ? process.env.NEXT_PUBLIC_SITE_URL
-      : // If not set, check for NEXT_PUBLIC_VERCEL_URL, which is automatically set by Vercel.
-        process?.env?.NEXT_PUBLIC_VERCEL_URL &&
-          process.env.NEXT_PUBLIC_VERCEL_URL.trim() !== ''
-        ? process.env.NEXT_PUBLIC_VERCEL_URL
-        : // If neither is set, default to localhost for local development.
-          'http://localhost:3000/';
-
-  // Trim the URL and remove trailing slash if exists.
-  url = url.replace(/\/+$/, '');
-  // Make sure to include `https://` when not localhost.
-  url = url.includes('http') ? url : `https://${url}`;
-  // Ensure path starts without a slash to avoid double slashes in the final URL.
-  path = path.replace(/^\/+/, '');
-
-  // Concatenate the URL and the path.
-  return path ? `${url}/${path}` : url;
+// Authentication helpers
+export const registerUser = async (email: string, password: string, name: string, username: string): Promise<UserCredential> => {
+  try {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    
+    // Create the user document in Firestore
+    await createUserDocument({
+      uid: userCredential.user.uid,
+      email,
+      name,
+      username
+    });
+    
+    return userCredential;
+  } catch (error) {
+    console.error('Error registering user:', error);
+    throw error;
+  }
 };
 
-export const postData = async ({
-  url,
-  data
-}: {
-  url: string;
-  data?: { price: Price };
-}) => {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: new Headers({ 'Content-Type': 'application/json' }),
-    credentials: 'same-origin',
-    body: JSON.stringify(data)
-  });
+export const loginUser = async (email: string, password: string): Promise<UserCredential> => {
+  try {
+    return await signInWithEmailAndPassword(auth, email, password);
+  } catch (error) {
+    console.error('Error logging in:', error);
+    throw error;
+  }
+};
 
-  return res.json();
+export const logoutUser = async (): Promise<void> => {
+  try {
+    return await signOut(auth);
+  } catch (error) {
+    console.error('Error logging out:', error);
+    throw error;
+  }
+};
+
+export const getCurrentUser = () => {
+  return auth.currentUser;
+};
+
+// Date helpers
+export const formatTimestamp = (timestamp: Timestamp): string => {
+  return timestamp.toDate().toLocaleDateString();
+};
+
+export const formatDatetime = (timestamp: Timestamp): string => {
+  return timestamp.toDate().toLocaleString();
 };
 
 export const toDateTime = (secs: number) => {
@@ -49,25 +63,76 @@ export const toDateTime = (secs: number) => {
   return t;
 };
 
-export const calculateTrialEndUnixTimestamp = (
-  trialPeriodDays: number | null | undefined
-) => {
-  // Check if trialPeriodDays is null, undefined, or less than 2 days
-  if (
-    trialPeriodDays === null ||
-    trialPeriodDays === undefined ||
-    trialPeriodDays < 2
-  ) {
-    return undefined;
-  }
-
-  const currentDate = new Date(); // Current date and time
-  const trialEnd = new Date(
-    currentDate.getTime() + (trialPeriodDays + 1) * 24 * 60 * 60 * 1000
-  ); // Add trial days
-  return Math.floor(trialEnd.getTime() / 1000); // Convert to Unix timestamp in seconds
+export const timestampToUnix = (timestamp: Timestamp): number => {
+  return timestamp.seconds;
 };
 
+export const unixToTimestamp = (unix: number): Timestamp => {
+  return Timestamp.fromMillis(unix * 1000);
+};
+
+// URL and API helpers
+export const getURL = (path: string = '') => {
+  let url =
+    process?.env?.NEXT_PUBLIC_SITE_URL &&
+    process.env.NEXT_PUBLIC_SITE_URL.trim() !== ''
+      ? process.env.NEXT_PUBLIC_SITE_URL
+      : process?.env?.NEXT_PUBLIC_VERCEL_URL &&
+          process.env.NEXT_PUBLIC_VERCEL_URL.trim() !== ''
+        ? process.env.NEXT_PUBLIC_VERCEL_URL
+        : 'http://localhost:3000/';
+
+  url = url.replace(/\/+$/, '');
+  url = url.includes('http') ? url : `https://${url}`;
+  path = path.replace(/^\/+/, '');
+
+  return path ? `${url}/${path}` : url;
+};
+
+export const postData = async ({
+  url,
+  // data
+}: {
+  url: string;
+  // data?: { price: Price } | any;
+}) => {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: new Headers({ 'Content-Type': 'application/json' }),
+    credentials: 'same-origin',
+    // body: JSON.stringify(data)
+  });
+
+  return res.json();
+};
+
+// Debate helpers
+export const formatDebateResult = (result: 'win' | 'loss' | 'draw' | 'ongoing'): string => {
+  switch (result) {
+    case 'win':
+      return 'Victory';
+    case 'loss':
+      return 'Defeat';
+    case 'draw':
+      return 'Draw';
+    case 'ongoing':
+      return 'In Progress';
+    default:
+      return 'Unknown';
+  }
+};
+
+export const canStartNewDebate = async (uid: string): Promise<boolean> => {
+  try {
+    const userData = await getUserDocument(uid);
+    return userData ? userData.remainingFreeDebates > 0 : false;
+  } catch (error) {
+    console.error('Error checking debate eligibility:', error);
+    return false;
+  }
+};
+
+// Toast notification helpers
 const toastKeyMap: { [key: string]: string[] } = {
   status: ['status', 'status_description'],
   error: ['error', 'error_description']
@@ -131,3 +196,21 @@ export const getErrorRedirect = (
     disableButton,
     arbitraryParams
   );
+
+export const calculateTrialEndUnixTimestamp = (
+  trialPeriodDays: number | null | undefined
+) => {
+  if (
+    trialPeriodDays === null ||
+    trialPeriodDays === undefined ||
+    trialPeriodDays < 2
+  ) {
+    return undefined;
+  }
+
+  const currentDate = new Date();
+  const trialEnd = new Date(
+    currentDate.getTime() + (trialPeriodDays + 1) * 24 * 60 * 60 * 1000
+  );
+  return Math.floor(trialEnd.getTime() / 1000);
+};
