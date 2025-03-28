@@ -1,6 +1,6 @@
-'use client'
+ 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo, Suspense } from 'react'
 import { Box, Button, VStack, Text, useToast } from '@chakra-ui/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { FcGoogle } from 'react-icons/fc'
@@ -8,12 +8,14 @@ import { signInWithGoogle } from '@/utils/auth'
 import { auth } from '@/utils/firebase'
 import { onAuthStateChanged } from 'firebase/auth'
 
-export default function SignIn() {
+function SignInComponent() {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
   const toast = useToast()
-  const redirect = searchParams.get('redirect') || '/dashboard'
+
+  // Use useMemo to ensure searchParams doesn't cause unnecessary re-renders
+  const redirect = useMemo(() => searchParams.get('redirect') || '/dashboard', [searchParams])
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -59,5 +61,14 @@ export default function SignIn() {
         </Button>
       </VStack>
     </Box>
+  )
+}
+
+// Wrap in Suspense for safe hydration
+export default function SignIn() {
+  return (
+    <Suspense fallback={<Text>Loading...</Text>}>
+      <SignInComponent />
+    </Suspense>
   )
 }
