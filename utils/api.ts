@@ -1,4 +1,4 @@
-const API_BASE_URL = 'https://gp-backend-jcsi.onrender.com/api';
+const API_BASE_URL = 'gpbackend-production.up.railway.app/api';
 
 export async function getTopics(userId: string): Promise<string[]> {
   const response = await fetch(`${API_BASE_URL}/get_topics`, {
